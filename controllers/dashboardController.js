@@ -30,7 +30,10 @@ const getDashboardStats = async (req, res) => {
         pendingPayments,
         totalCustomers,
         totalInvoices,
-        recentJobCards
+        recentJobCards,
+        jobsByStatus,
+        monthlyRevenue,
+        technicianWorkload
       ] = await Promise.all([
         // Total Jobs Today
         pool.execute(
@@ -73,8 +76,57 @@ const getDashboardStats = async (req, res) => {
            FROM job_cards jc
            LEFT JOIN customers c ON jc.customer_id = c.id
            ORDER BY jc.created_at DESC LIMIT 5`
+        ),
+        // Jobs By Status
+        pool.execute(
+          `SELECT status, COUNT(*) as count FROM job_cards GROUP BY status`
+        ),
+        // Monthly Revenue
+        pool.execute(
+          `SELECT DATE_FORMAT(created_at, '%b') as month, SUM(grand_total) as revenue 
+           FROM invoices 
+           WHERE created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH) 
+           GROUP BY DATE_FORMAT(created_at, '%Y-%m'), DATE_FORMAT(created_at, '%b') 
+           ORDER BY DATE_FORMAT(created_at, '%Y-%m') ASC`
+        ),
+        // Technician Workload
+        pool.execute(
+          `SELECT u.name, 
+           COUNT(jc.id) as assigned, 
+           SUM(CASE WHEN jc.status = 'Completed' THEN 1 ELSE 0 END) as completed, 
+           SUM(CASE WHEN jc.status != 'Completed' AND jc.status != 'Delivered' THEN 1 ELSE 0 END) as pending 
+           FROM users u 
+           LEFT JOIN job_cards jc ON u.id = jc.technician_id 
+           WHERE u.role = 'technician' 
+           GROUP BY u.id, u.name`
         )
       ]);
+
+      const jobsByStatusRaw = jobsByStatus[0];
+      const monthlyRevenueRaw = monthlyRevenue[0];
+      const technicianWorkloadRaw = technicianWorkload[0];
+
+      // Process Jobs By Status to match specific ordering if needed, or just pass as is
+      // We will map colors in frontend based on status name
+      const formattedJobsByStatus = jobsByStatusRaw.map(item => ({
+        status: item.status,
+        count: item.count
+      }));
+
+      // Process Monthly Revenue
+      // Fill in missing months if needed, but for now just pass what DB returns
+      const formattedMonthlyRevenue = monthlyRevenueRaw.map(item => ({
+        month: item.month,
+        revenue: parseFloat(item.revenue || 0)
+      }));
+
+      // Process Technician Workload
+      const formattedTechnicianWorkload = technicianWorkloadRaw.map(tech => ({
+        name: tech.name,
+        assigned: parseInt(tech.assigned || 0),
+        completed: parseInt(tech.completed || 0),
+        pending: parseInt(tech.pending || 0)
+      }));
 
       stats = {
         totalJobsToday: totalJobsToday[0][0]?.count || 0,
@@ -92,7 +144,10 @@ const getDashboardStats = async (req, res) => {
           customerName: jc.customer_name,
           status: jc.status,
           createdAt: jc.created_at ? jc.created_at.toISOString().split('T')[0] : null
-        }))
+        })),
+        jobsByStatus: formattedJobsByStatus,
+        monthlyRevenue: formattedMonthlyRevenue,
+        technicianWorkload: formattedTechnicianWorkload
       };
 
     } else if (userRole === 'technician') {

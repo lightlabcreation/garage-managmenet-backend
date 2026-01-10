@@ -10,25 +10,32 @@ const pool = require('../config/db');
  * GET /api/customers
  * Query params: search (optional)
  */
+
+/**
+ * Get all customers
+ * GET /api/customers
+ * Query params: search (optional)
+ */
 const getAllCustomers = async (req, res) => {
   try {
     const { search } = req.query;
-    
+
     let query = `
       SELECT 
         id, name, email, phone, company, address, created_at, updated_at
       FROM customers
+      WHERE is_deleted = 0
     `;
     const params = [];
 
     // Search filter
     if (search) {
-      query += ` WHERE 
+      query += ` AND (
         name LIKE ? OR 
         email LIKE ? OR 
         phone LIKE ? OR 
         company LIKE ?
-      `;
+      )`;
       const searchPattern = `%${search}%`;
       params.push(searchPattern, searchPattern, searchPattern, searchPattern);
     }
@@ -62,7 +69,7 @@ const getCustomerById = async (req, res) => {
     const [customers] = await pool.execute(
       `SELECT 
         id, name, email, phone, company, address, created_at, updated_at
-      FROM customers WHERE id = ?`,
+      FROM customers WHERE id = ? AND is_deleted = 0`,
       [id]
     );
 
@@ -106,7 +113,7 @@ const createCustomer = async (req, res) => {
     // Check if email already exists (if provided)
     if (email) {
       const [existingCustomers] = await pool.execute(
-        'SELECT id FROM customers WHERE email = ?',
+        'SELECT id FROM customers WHERE email = ? AND is_deleted = 0',
         [email]
       );
 
@@ -146,7 +153,7 @@ const createCustomer = async (req, res) => {
     });
   } catch (error) {
     console.error('Create customer error:', error);
-    
+
     // Handle duplicate email error
     if (error.code === 'ER_DUP_ENTRY') {
       return res.status(400).json({
@@ -174,7 +181,7 @@ const updateCustomer = async (req, res) => {
 
     // Check if customer exists
     const [existingCustomers] = await pool.execute(
-      'SELECT id FROM customers WHERE id = ?',
+      'SELECT id FROM customers WHERE id = ? AND is_deleted = 0',
       [id]
     );
 
@@ -188,7 +195,7 @@ const updateCustomer = async (req, res) => {
     // Check if email is being changed and if it already exists
     if (email) {
       const [emailCheck] = await pool.execute(
-        'SELECT id FROM customers WHERE email = ? AND id != ?',
+        'SELECT id FROM customers WHERE email = ? AND id != ? AND is_deleted = 0',
         [email, id]
       );
 
@@ -255,7 +262,7 @@ const updateCustomer = async (req, res) => {
     });
   } catch (error) {
     console.error('Update customer error:', error);
-    
+
     if (error.code === 'ER_DUP_ENTRY') {
       return res.status(400).json({
         success: false,
@@ -291,21 +298,8 @@ const deleteCustomer = async (req, res) => {
       });
     }
 
-    // Check if customer has job cards
-    const [jobCards] = await pool.execute(
-      'SELECT id FROM job_cards WHERE customer_id = ? LIMIT 1',
-      [id]
-    );
-
-    if (jobCards.length > 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'Cannot delete customer with existing job cards'
-      });
-    }
-
-    // Delete customer
-    await pool.execute('DELETE FROM customers WHERE id = ?', [id]);
+    // Soft delete customer
+    await pool.execute('UPDATE customers SET is_deleted = 1 WHERE id = ?', [id]);
 
     res.json({
       success: true,

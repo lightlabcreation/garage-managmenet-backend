@@ -6,6 +6,7 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const path = require('path');
 
 // Load environment variables
 dotenv.config();
@@ -34,17 +35,21 @@ const settingsRoutes = require('./routes/settingsRoutes');
 
 // Initialize Express app
 const app = express();
-const PORT = process.env.PORT || 8000;
+// Force port 8000 if 3000 is set (to avoid conflict with frontend)
+const PORT = process.env.PORT === '3000' || !process.env.PORT ? 8000 : process.env.PORT;
 
 // Middleware
 app.use(cors()); // Enable CORS for frontend
 app.use(express.json()); // Parse JSON bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 
+// Static uploads
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ 
-    success: true, 
+  res.json({
+    success: true,
     message: 'Workshop Management API is running',
     timestamp: new Date().toISOString()
   });
@@ -66,18 +71,18 @@ app.use('/api/settings', settingsRoutes);
 
 // 404 handler
 app.use((req, res) => {
-  res.status(404).json({ 
-    success: false, 
-    error: 'Route not found' 
+  res.status(404).json({
+    success: false,
+    error: 'Route not found'
   });
 });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Error:', err);
-  res.status(err.status || 500).json({ 
-    success: false, 
-    error: err.message || 'Internal server error' 
+  res.status(err.status || 500).json({
+    success: false,
+    error: err.message || 'Internal server error'
   });
 });
 

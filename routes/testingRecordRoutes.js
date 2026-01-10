@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const testingRecordController = require('../controllers/testingRecordController');
 const { authenticate } = require('../middleware/auth');
+const { testingRecordUpload } = require('../middleware/upload');
 
 // All routes require authentication
 const auth = authenticate();
@@ -18,10 +19,10 @@ router.get('/', auth, testingRecordController.getAllTestingRecords);
 router.get('/:id', auth, testingRecordController.getTestingRecordById);
 
 // Create new testing record
-router.post('/', auth, testingRecordController.createTestingRecord);
+router.post('/', auth, testingRecordUpload, testingRecordController.createTestingRecord);
 
 // Update testing record
-router.put('/:id', auth, testingRecordController.updateTestingRecord);
+router.put('/:id', auth, testingRecordUpload, testingRecordController.updateTestingRecord);
 
 // Delete testing record
 router.delete('/:id', auth, testingRecordController.deleteTestingRecord);
