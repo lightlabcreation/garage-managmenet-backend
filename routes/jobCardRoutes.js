@@ -26,5 +26,17 @@ router.put('/:id', auth, jobCardController.updateJobCard);
 // Delete job card
 router.delete('/:id', auth, jobCardController.deleteJobCard);
 
+// Job Card Materials routes
+const jobCardMaterialsController = require('../controllers/jobCardMaterialsController');
+
+// Get materials for a job card
+router.get('/:id/materials', auth, jobCardMaterialsController.getJobCardMaterials);
+
+// Add material to job card
+router.post('/:id/materials', auth, jobCardMaterialsController.addJobCardMaterial);
+
+// Remove material from job card
+router.delete('/:id/materials/:materialId', auth, jobCardMaterialsController.removeJobCardMaterial);
+
 module.exports = router;
 

@@ -32,6 +32,7 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
+const dropdownOptionsRoutes = require('./routes/dropdownOptionsRoutes');
 
 // Initialize Express app
 const app = express();
@@ -68,6 +69,7 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/dropdown-options', dropdownOptionsRoutes);
 
 // 404 handler
 app.use((req, res) => {

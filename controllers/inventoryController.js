@@ -13,11 +13,13 @@ const pool = require('../config/db');
 const getAllInventoryItems = async (req, res) => {
   try {
     const { category, status, search } = req.query;
-    
+
     let query = `
       SELECT 
         id, part_name, part_code, category, supplier,
-        available_stock, min_stock_level, created_at, updated_at
+        available_stock, min_stock_level, unit_price, 
+        wholesale_price, sales_price, purchase_price,
+        created_at, updated_at
       FROM inventory_items
       WHERE 1=1
     `;
@@ -59,6 +61,10 @@ const getAllInventoryItems = async (req, res) => {
       supplier: item.supplier,
       availableStock: item.available_stock,
       minStockLevel: item.min_stock_level,
+      unitPrice: item.unit_price,
+      wholesalePrice: item.wholesale_price,
+      salesPrice: item.sales_price,
+      purchasePrice: item.purchase_price,
       status: item.available_stock <= item.min_stock_level ? 'Low' : 'OK',
       createdAt: item.created_at,
       updatedAt: item.updated_at
@@ -89,7 +95,9 @@ const getInventoryItemById = async (req, res) => {
     const [items] = await pool.execute(
       `SELECT 
         id, part_name, part_code, category, supplier,
-        available_stock, min_stock_level, created_at, updated_at
+        available_stock, min_stock_level, unit_price,
+        wholesale_price, sales_price, purchase_price,
+        created_at, updated_at
       FROM inventory_items WHERE id = ?`,
       [id]
     );
@@ -110,6 +118,10 @@ const getInventoryItemById = async (req, res) => {
       supplier: item.supplier,
       availableStock: item.available_stock,
       minStockLevel: item.min_stock_level,
+      unitPrice: item.unit_price,
+      wholesalePrice: item.wholesale_price,
+      salesPrice: item.sales_price,
+      purchasePrice: item.purchase_price,
       status: item.available_stock <= item.min_stock_level ? 'Low' : 'OK'
     };
 
@@ -133,7 +145,7 @@ const getInventoryItemById = async (req, res) => {
  */
 const createInventoryItem = async (req, res) => {
   try {
-    const { partName, partCode, category, supplier, availableStock, minStockLevel } = req.body;
+    const { partName, partCode, category, supplier, availableStock, minStockLevel, unitPrice, wholesalePrice, salesPrice, purchasePrice } = req.body;
 
     // Validate required fields
     if (!partName || !category) {
@@ -162,15 +174,21 @@ const createInventoryItem = async (req, res) => {
     const [result] = await pool.execute(
       `INSERT INTO inventory_items (
         part_name, part_code, category, supplier,
-        available_stock, min_stock_level, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+        available_stock, min_stock_level, unit_price,
+        wholesale_price, sales_price, purchase_price,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [
         partName,
         partCode || null,
         category,
         supplier || null,
         availableStock || 0,
-        minStockLevel || 0
+        minStockLevel || 0,
+        unitPrice || 0,
+        wholesalePrice || 0,
+        salesPrice || 0,
+        purchasePrice || 0
       ]
     );
 
@@ -178,7 +196,9 @@ const createInventoryItem = async (req, res) => {
     const [items] = await pool.execute(
       `SELECT 
         id, part_name, part_code, category, supplier,
-        available_stock, min_stock_level, created_at, updated_at
+        available_stock, min_stock_level, unit_price,
+        wholesale_price, sales_price, purchase_price,
+        created_at, updated_at
       FROM inventory_items WHERE id = ?`,
       [result.insertId]
     );
@@ -192,6 +212,10 @@ const createInventoryItem = async (req, res) => {
       supplier: item.supplier,
       availableStock: item.available_stock,
       minStockLevel: item.min_stock_level,
+      unitPrice: item.unit_price,
+      wholesalePrice: item.wholesale_price,
+      salesPrice: item.sales_price,
+      purchasePrice: item.purchase_price,
       status: item.available_stock <= item.min_stock_level ? 'Low' : 'OK'
     };
 
@@ -202,7 +226,7 @@ const createInventoryItem = async (req, res) => {
     });
   } catch (error) {
     console.error('Create inventory item error:', error);
-    
+
     if (error.code === 'ER_DUP_ENTRY') {
       return res.status(400).json({
         success: false,
@@ -224,7 +248,7 @@ const createInventoryItem = async (req, res) => {
 const updateInventoryItem = async (req, res) => {
   try {
     const { id } = req.params;
-    const { partName, partCode, category, supplier, availableStock, minStockLevel } = req.body;
+    const { partName, partCode, category, supplier, availableStock, minStockLevel, unitPrice, wholesalePrice, salesPrice, purchasePrice } = req.body;
 
     // Check if item exists
     const [existingItems] = await pool.execute(
@@ -282,6 +306,22 @@ const updateInventoryItem = async (req, res) => {
       updates.push('min_stock_level = ?');
       params.push(minStockLevel);
     }
+    if (unitPrice !== undefined) {
+      updates.push('unit_price = ?');
+      params.push(unitPrice);
+    }
+    if (wholesalePrice !== undefined) {
+      updates.push('wholesale_price = ?');
+      params.push(wholesalePrice);
+    }
+    if (salesPrice !== undefined) {
+      updates.push('sales_price = ?');
+      params.push(salesPrice);
+    }
+    if (purchasePrice !== undefined) {
+      updates.push('purchase_price = ?');
+      params.push(purchasePrice);
+    }
 
     if (updates.length === 0) {
       return res.status(400).json({
@@ -302,7 +342,9 @@ const updateInventoryItem = async (req, res) => {
     const [items] = await pool.execute(
       `SELECT 
         id, part_name, part_code, category, supplier,
-        available_stock, min_stock_level, created_at, updated_at
+        available_stock, min_stock_level, unit_price,
+        wholesale_price, sales_price, purchase_price,
+        created_at, updated_at
       FROM inventory_items WHERE id = ?`,
       [id]
     );
@@ -316,6 +358,10 @@ const updateInventoryItem = async (req, res) => {
       supplier: item.supplier,
       availableStock: item.available_stock,
       minStockLevel: item.min_stock_level,
+      unitPrice: item.unit_price,
+      wholesalePrice: item.wholesale_price,
+      salesPrice: item.sales_price,
+      purchasePrice: item.purchase_price,
       status: item.available_stock <= item.min_stock_level ? 'Low' : 'OK'
     };
 
@@ -326,7 +372,7 @@ const updateInventoryItem = async (req, res) => {
     });
   } catch (error) {
     console.error('Update inventory item error:', error);
-    
+
     if (error.code === 'ER_DUP_ENTRY') {
       return res.status(400).json({
         success: false,
@@ -660,6 +706,71 @@ const getStockTransactions = async (req, res) => {
   }
 };
 
+/**
+ * Get all inventory categories
+ * GET /api/inventory/categories
+ */
+const getInventoryCategories = async (req, res) => {
+  try {
+    const [categories] = await pool.execute(
+      'SELECT id, name FROM inventory_categories ORDER BY name ASC'
+    );
+
+    res.json({
+      success: true,
+      data: categories
+    });
+  } catch (error) {
+    console.error('Get inventory categories error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch categories'
+    });
+  }
+};
+
+/**
+ * Create new inventory category
+ * POST /api/inventory/categories
+ */
+const createInventoryCategory = async (req, res) => {
+  try {
+    const { name } = req.body;
+
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        error: 'Category name is required'
+      });
+    }
+
+    const [result] = await pool.execute(
+      'INSERT INTO inventory_categories (name) VALUES (?)',
+      [name]
+    );
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: result.insertId,
+        name
+      }
+    });
+  } catch (error) {
+    console.error('Create inventory category error:', error);
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({
+        success: false,
+        error: 'Category already exists'
+      });
+    }
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create category'
+    });
+  }
+};
+
 module.exports = {
   getAllInventoryItems,
   getInventoryItemById,
@@ -668,6 +779,8 @@ module.exports = {
   deleteInventoryItem,
   stockIn,
   stockOut,
-  getStockTransactions
+  getStockTransactions,
+  getInventoryCategories,
+  createInventoryCategory
 };
 
