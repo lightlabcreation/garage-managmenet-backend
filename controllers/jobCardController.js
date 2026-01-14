@@ -213,14 +213,18 @@ const getJobCardById = async (req, res) => {
       receivedDate: jc.received_date ? jc.received_date.toISOString().split('T')[0] : null,
       expectedDeliveryDate: jc.expected_delivery_date ? jc.expected_delivery_date.toISOString().split('T')[0] : null,
       description: jc.description,
-      quotationAmount: jc.quotation_amount,
-      finalAmount: jc.final_amount,
+      quotationAmount: parseFloat(jc.quotation_amount) || 0,
+      finalAmount: parseFloat(jc.final_amount) || 0,
+      labourCost: parseFloat(jc.labour_cost) || 0,
+      materialsAmount: parseFloat(jc.materials_amount) || 0,
+      materialsCost: parseFloat(jc.materials_cost) || 0,
       materials: materials.map(m => ({
         id: m.id,
         materialName: m.material_name,
         quantity: m.quantity,
         unitPrice: m.unit_price,
         totalPrice: m.total_price,
+        totalCost: m.total_cost,
         partCode: m.part_code
       })),
       createdAt: jc.created_at,
@@ -267,7 +271,8 @@ const createJobCard = async (req, res) => {
       expectedDeliveryDate,
       description,
       quotationAmount,
-      finalAmount
+      finalAmount,
+      labourCost
     } = req.body;
 
     // Validate required fields
@@ -320,8 +325,8 @@ const createJobCard = async (req, res) => {
         job_no, customer_id, technician_id, vehicle_type, vehicle_number,
         engine_model, job_type, job_sub_type, brand, pump_injector_serial,
         quantity, status, received_date, expected_delivery_date, description,
-        quotation_amount, final_amount, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+        quotation_amount, final_amount, labour_cost, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [
         jobNo,
         customerId,
@@ -339,7 +344,8 @@ const createJobCard = async (req, res) => {
         expectedDeliveryDate || null,
         description || null,
         quotationAmount || 0,
-        finalAmount || 0
+        finalAmount || 0,
+        labourCost || 0
       ]
     );
 
@@ -349,8 +355,9 @@ const createJobCard = async (req, res) => {
         jc.id, jc.job_no, jc.customer_id, jc.technician_id,
         jc.vehicle_type, jc.vehicle_number, jc.engine_model,
         jc.job_type, jc.job_sub_type, jc.brand, jc.pump_injector_serial,
+        jc.quantity,
         jc.status, jc.received_date, jc.expected_delivery_date,
-        jc.description, jc.quotation_amount, jc.final_amount, jc.created_at, jc.updated_at,
+        jc.description, jc.quotation_amount, jc.final_amount, jc.labour_cost, jc.created_at, jc.updated_at,
         c.name AS customer_name, c.phone AS customer_phone, c.company AS company_name,
         u.name AS technician_name
       FROM job_cards jc
@@ -376,12 +383,14 @@ const createJobCard = async (req, res) => {
       pumpInjectorSerial: jc.pump_injector_serial,
       technicianId: jc.technician_id,
       technician: jc.technician_name,
+      quantity: jc.quantity,
       status: jc.status,
       receivedDate: jc.received_date ? jc.received_date.toISOString().split('T')[0] : null,
       expectedDeliveryDate: jc.expected_delivery_date ? jc.expected_delivery_date.toISOString().split('T')[0] : null,
       description: jc.description,
-      quotationAmount: jc.quotation_amount,
-      finalAmount: jc.final_amount
+      quotationAmount: parseFloat(jc.quotation_amount) || 0,
+      finalAmount: parseFloat(jc.final_amount) || 0,
+      labourCost: parseFloat(jc.labour_cost) || 0
     };
 
     res.status(201).json({
@@ -423,7 +432,8 @@ const updateJobCard = async (req, res) => {
       description,
       quantity,
       quotationAmount,
-      finalAmount
+      finalAmount,
+      labourCost
     } = req.body;
 
     // Check if job card exists
@@ -461,72 +471,70 @@ const updateJobCard = async (req, res) => {
       }
     }
 
-    // Build update query
-    const updates = [];
+    // Build update query dynamically
+    let updateQuery = 'UPDATE job_cards SET updated_at = NOW()';
     const params = [];
 
-    if (vehicleType) {
-      updates.push('vehicle_type = ?');
-      params.push(vehicleType);
-    }
-    if (vehicleNumber !== undefined) {
-      updates.push('vehicle_number = ?');
-      params.push(vehicleNumber);
-    }
-    if (engineModel !== undefined) {
-      updates.push('engine_model = ?');
-      params.push(engineModel);
-    }
-    if (jobType) {
-      updates.push('job_type = ?');
-      params.push(jobType);
-    }
-    if (jobSubType !== undefined) {
-      updates.push('job_sub_type = ?');
-      params.push(jobSubType);
-    }
-    if (brand) {
-      updates.push('brand = ?');
-      params.push(brand);
-    }
-    if (pumpInjectorSerial !== undefined) {
-      updates.push('pump_injector_serial = ?');
-      params.push(pumpInjectorSerial);
-    }
     if (technicianId !== null) {
-      updates.push('technician_id = ?');
+      updateQuery += ', technician_id = ?';
       params.push(technicianId);
     }
     if (status) {
-      updates.push('status = ?');
+      updateQuery += ', status = ?';
       params.push(status);
     }
+    if (vehicleType) {
+      updateQuery += ', vehicle_type = ?';
+      params.push(vehicleType);
+    }
+    if (vehicleNumber !== undefined) {
+      updateQuery += ', vehicle_number = ?';
+      params.push(vehicleNumber);
+    }
+    if (engineModel !== undefined) {
+      updateQuery += ', engine_model = ?';
+      params.push(engineModel);
+    }
+    if (jobType) {
+      updateQuery += ', job_type = ?';
+      params.push(jobType);
+    }
+    if (jobSubType !== undefined) {
+      updateQuery += ', job_sub_type = ?';
+      params.push(jobSubType);
+    }
+    if (brand) {
+      updateQuery += ', brand = ?';
+      params.push(brand);
+    }
+    if (pumpInjectorSerial !== undefined) {
+      updateQuery += ', pump_injector_serial = ?';
+      params.push(pumpInjectorSerial);
+    }
     if (receivedDate) {
-      updates.push('received_date = ?');
+      updateQuery += ', received_date = ?';
       params.push(receivedDate);
     }
     if (expectedDeliveryDate !== undefined) {
-      updates.push('expected_delivery_date = ?');
+      updateQuery += ', expected_delivery_date = ?';
       params.push(expectedDeliveryDate);
     }
     if (description !== undefined) {
-      updates.push('description = ?');
+      updateQuery += ', description = ?';
       params.push(description);
     }
     if (quantity !== undefined) {
-      updates.push('quantity = ?');
+      updateQuery += ', quantity = ?';
       params.push(quantity);
     }
-
     if (quotationAmount !== undefined) {
-      updates.push('quotation_amount = ?');
+      updateQuery += ', quotation_amount = ?';
       params.push(quotationAmount);
     }
     if (finalAmount !== undefined) {
-      updates.push('final_amount = ?');
+      updateQuery += ', final_amount = ?';
       params.push(finalAmount);
     }
-
     if (updates.length > 0) {
       updates.push('updated_at = NOW()');
       params.push(id);
@@ -573,6 +581,49 @@ const updateJobCard = async (req, res) => {
                 await connection.execute(
                   'UPDATE job_card_materials SET stock_deducted = 1 WHERE id = ?',
                   [mat.id]
+                );
+
+                // Get some details for logging
+                const [details] = await connection.execute(
+                  `SELECT jc.job_no, c.name FROM job_cards jc 
+                   JOIN customers c ON jc.customer_id = c.id 
+                   WHERE jc.id = ?`,
+                  [id]
+                );
+                const jobNo = details[0]?.job_no || 'N/A';
+                const customerName = details[0]?.name || 'N/A';
+
+                // Get material prices for activity log
+                const [matPrices] = await connection.execute(
+                  'SELECT unit_price, unit_cost FROM job_card_materials WHERE id = ?',
+                  [mat.id]
+                );
+                const unitPrice = matPrices[0]?.unit_price || 0;
+
+                // Record in stock_transactions
+                await connection.execute(
+                  `INSERT INTO stock_transactions (
+                    inventory_item_id, transaction_type, quantity, reference_no, notes, created_at
+                  ) VALUES (?, 'Stock Out', ?, ?, ?, NOW())`,
+                  [mat.inventory_item_id, mat.quantity, jobNo, `Used in Job Card ${jobNo}`]
+                );
+
+                // Record in item_activity
+                await connection.execute(
+                  `INSERT INTO item_activity (
+                    inventory_item_id, activity_type, activity_date, quantity, 
+                    unit_price, total_price, reference_type, reference_no, customer_name, notes, created_at
+                  ) VALUES (?, 'Job Usage', CURDATE(), ?, ?, ?, 'Job Card', ?, ?, ?, NOW())`,
+                  [
+                    mat.inventory_item_id,
+                    mat.quantity,
+                    unitPrice,
+                    mat.quantity * unitPrice,
+                    'Job Card',
+                    jobNo,
+                    customerName,
+                    `Used in Job Card ${jobNo}`
+                  ]
                 );
               }
             }

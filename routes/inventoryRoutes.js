@@ -41,5 +41,8 @@ router.post('/categories', auth, inventoryController.createInventoryCategory);
 // Get stock transactions for an item
 router.get('/:id/transactions', auth, inventoryController.getStockTransactions);
 
+// Get item activity (full history)
+router.get('/:id/activity', auth, inventoryController.getItemActivity);
+
 module.exports = router;
 

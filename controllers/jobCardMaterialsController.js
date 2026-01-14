@@ -69,7 +69,7 @@ const addJobCardMaterial = async (req, res) => {
 
         // Get inventory item details
         const [items] = await pool.execute(
-            'SELECT id, part_name, unit_price, available_stock FROM inventory_items WHERE id = ?',
+            'SELECT id, part_name, unit_price, sales_price, purchase_price, available_stock FROM inventory_items WHERE id = ?',
             [inventoryItemId]
         );
 
@@ -90,8 +90,10 @@ const addJobCardMaterial = async (req, res) => {
             });
         }
 
-        const unitPrice = item.unit_price || 0;
+        const unitPrice = item.sales_price || item.unit_price || 0;
+        const unitCost = item.purchase_price || 0;
         const totalPrice = unitPrice * quantity;
+        const totalCost = unitCost * quantity;
 
         // Start transaction
         const connection = await pool.getConnection();
@@ -101,9 +103,9 @@ const addJobCardMaterial = async (req, res) => {
             // Add material to job card
             const [result] = await connection.execute(
                 `INSERT INTO job_card_materials 
-          (job_card_id, inventory_item_id, material_name, quantity, unit_price, total_price, stock_deducted)
-        VALUES (?, ?, ?, ?, ?, ?, 1)`,
-                [id, inventoryItemId, item.part_name, quantity, unitPrice, totalPrice]
+          (job_card_id, inventory_item_id, material_name, quantity, unit_price, unit_cost, total_price, total_cost, stock_deducted)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+                [id, inventoryItemId, item.part_name, quantity, unitPrice, unitCost, totalPrice, totalCost]
             );
 
             // Deduct from inventory
@@ -122,7 +124,9 @@ const addJobCardMaterial = async (req, res) => {
                     materialName: item.part_name,
                     quantity,
                     unitPrice,
-                    totalPrice
+                    unitCost,
+                    totalPrice,
+                    totalCost
                 }
             });
         } catch (error) {
