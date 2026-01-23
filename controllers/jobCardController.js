@@ -472,171 +472,176 @@ const updateJobCard = async (req, res) => {
     }
 
     // Build update query dynamically
-    let updateQuery = 'UPDATE job_cards SET updated_at = NOW()';
+    let updateQuery = 'UPDATE job_cards SET';
+    const updateFields = ['updated_at = NOW()'];
     const params = [];
 
     if (technicianId !== null) {
-      updateQuery += ', technician_id = ?';
+      updateFields.push('technician_id = ?');
       params.push(technicianId);
     }
     if (status) {
-      updateQuery += ', status = ?';
+      updateFields.push('status = ?');
       params.push(status);
     }
     if (vehicleType) {
-      updateQuery += ', vehicle_type = ?';
+      updateFields.push('vehicle_type = ?');
       params.push(vehicleType);
     }
     if (vehicleNumber !== undefined) {
-      updateQuery += ', vehicle_number = ?';
+      updateFields.push('vehicle_number = ?');
       params.push(vehicleNumber);
     }
     if (engineModel !== undefined) {
-      updateQuery += ', engine_model = ?';
+      updateFields.push('engine_model = ?');
       params.push(engineModel);
     }
     if (jobType) {
-      updateQuery += ', job_type = ?';
+      updateFields.push('job_type = ?');
       params.push(jobType);
     }
     if (jobSubType !== undefined) {
-      updateQuery += ', job_sub_type = ?';
+      updateFields.push('job_sub_type = ?');
       params.push(jobSubType);
     }
     if (brand) {
-      updateQuery += ', brand = ?';
+      updateFields.push('brand = ?');
       params.push(brand);
     }
     if (pumpInjectorSerial !== undefined) {
-      updateQuery += ', pump_injector_serial = ?';
+      updateFields.push('pump_injector_serial = ?');
       params.push(pumpInjectorSerial);
     }
     if (receivedDate) {
-      updateQuery += ', received_date = ?';
+      updateFields.push('received_date = ?');
       params.push(receivedDate);
     }
     if (expectedDeliveryDate !== undefined) {
-      updateQuery += ', expected_delivery_date = ?';
+      updateFields.push('expected_delivery_date = ?');
       params.push(expectedDeliveryDate);
     }
     if (description !== undefined) {
-      updateQuery += ', description = ?';
+      updateFields.push('description = ?');
       params.push(description);
     }
     if (quantity !== undefined) {
-      updateQuery += ', quantity = ?';
+      updateFields.push('quantity = ?');
       params.push(quantity);
     }
     if (quotationAmount !== undefined) {
-      updateQuery += ', quotation_amount = ?';
+      updateFields.push('quotation_amount = ?');
       params.push(quotationAmount);
     }
     if (finalAmount !== undefined) {
-      updateQuery += ', final_amount = ?';
+      updateFields.push('final_amount = ?');
       params.push(finalAmount);
     }
-    if (updates.length > 0) {
-      updates.push('updated_at = NOW()');
-      params.push(id);
+    if (labourCost !== undefined) {
+      updateFields.push('labour_cost = ?');
+      params.push(labourCost);
+    }
+    
+    // Build the final update query
+    updateQuery = `${updateQuery} ${updateFields.join(', ')}`;
+    params.push(id);
 
-      // Start transaction for status-based inventory deduction
-      const connection = await pool.getConnection();
-      await connection.beginTransaction();
+    // Start transaction for status-based inventory deduction
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
 
-      try {
-        await connection.execute(
-          `UPDATE job_cards SET ${updates.join(', ')} WHERE id = ?`,
-          params
+    try {
+      await connection.execute(
+        `${updateQuery} WHERE id = ?`,
+        params
+      );
+
+      // Inventory Deduction Logic: If moving to 'Under Repair'
+      if (status === 'Under Repair' && existingJob.status !== 'Under Repair') {
+        // Get all materials that are NOT yet deducted
+        const [undeductedMaterials] = await connection.execute(
+          'SELECT id, inventory_item_id, quantity FROM job_card_materials WHERE job_card_id = ? AND stock_deducted = 0',
+          [id]
         );
 
-        // Inventory Deduction Logic: If moving to 'Under Repair'
-        if (status === 'Under Repair' && existingJob.status !== 'Under Repair') {
-          // Get all materials that are NOT yet deducted
-          const [undeductedMaterials] = await connection.execute(
-            'SELECT id, inventory_item_id, quantity FROM job_card_materials WHERE job_card_id = ? AND stock_deducted = 0',
-            [id]
-          );
+        for (const mat of undeductedMaterials) {
+          if (mat.inventory_item_id) {
+            // Check stock
+            const [invItems] = await connection.execute(
+              'SELECT available_stock, part_name FROM inventory_items WHERE id = ? FOR UPDATE',
+              [mat.inventory_item_id]
+            );
 
-          for (const mat of undeductedMaterials) {
-            if (mat.inventory_item_id) {
-              // Check stock
-              const [invItems] = await connection.execute(
-                'SELECT available_stock, part_name FROM inventory_items WHERE id = ? FOR UPDATE',
-                [mat.inventory_item_id]
+            if (invItems.length > 0) {
+              const item = invItems[0];
+              if (item.available_stock < mat.quantity) {
+                throw new Error(`Insufficient stock for ${item.part_name}. Available: ${item.available_stock}, needed: ${mat.quantity}`);
+              }
+
+              // Deduct stock
+              await connection.execute(
+                'UPDATE inventory_items SET available_stock = available_stock - ? WHERE id = ?',
+                [mat.quantity, mat.inventory_item_id]
               );
 
-              if (invItems.length > 0) {
-                const item = invItems[0];
-                if (item.available_stock < mat.quantity) {
-                  throw new Error(`Insufficient stock for ${item.part_name}. Available: ${item.available_stock}, needed: ${mat.quantity}`);
-                }
+              // Mark material as deducted
+              await connection.execute(
+                'UPDATE job_card_materials SET stock_deducted = 1 WHERE id = ?',
+                [mat.id]
+              );
 
-                // Deduct stock
-                await connection.execute(
-                  'UPDATE inventory_items SET available_stock = available_stock - ? WHERE id = ?',
-                  [mat.quantity, mat.inventory_item_id]
-                );
+              // Get some details for logging
+              const [details] = await connection.execute(
+                `SELECT jc.job_no, c.name FROM job_cards jc 
+                 JOIN customers c ON jc.customer_id = c.id 
+                 WHERE jc.id = ?`,
+                [id]
+              );
+              const jobNo = details[0]?.job_no || 'N/A';
+              const customerName = details[0]?.name || 'N/A';
 
-                // Mark material as deducted
-                await connection.execute(
-                  'UPDATE job_card_materials SET stock_deducted = 1 WHERE id = ?',
-                  [mat.id]
-                );
+              // Get material prices for activity log
+              const [matPrices] = await connection.execute(
+                'SELECT unit_price, unit_cost FROM job_card_materials WHERE id = ?',
+                [mat.id]
+              );
+              const unitPrice = matPrices[0]?.unit_price || 0;
 
-                // Get some details for logging
-                const [details] = await connection.execute(
-                  `SELECT jc.job_no, c.name FROM job_cards jc 
-                   JOIN customers c ON jc.customer_id = c.id 
-                   WHERE jc.id = ?`,
-                  [id]
-                );
-                const jobNo = details[0]?.job_no || 'N/A';
-                const customerName = details[0]?.name || 'N/A';
+              // Record in stock_transactions
+              await connection.execute(
+                `INSERT INTO stock_transactions (
+                  inventory_item_id, transaction_type, quantity, reference_no, notes, created_at
+                ) VALUES (?, 'Stock Out', ?, ?, ?, NOW())`,
+                [mat.inventory_item_id, mat.quantity, jobNo, `Used in Job Card ${jobNo}`]
+              );
 
-                // Get material prices for activity log
-                const [matPrices] = await connection.execute(
-                  'SELECT unit_price, unit_cost FROM job_card_materials WHERE id = ?',
-                  [mat.id]
-                );
-                const unitPrice = matPrices[0]?.unit_price || 0;
-
-                // Record in stock_transactions
-                await connection.execute(
-                  `INSERT INTO stock_transactions (
-                    inventory_item_id, transaction_type, quantity, reference_no, notes, created_at
-                  ) VALUES (?, 'Stock Out', ?, ?, ?, NOW())`,
-                  [mat.inventory_item_id, mat.quantity, jobNo, `Used in Job Card ${jobNo}`]
-                );
-
-                // Record in item_activity
-                await connection.execute(
-                  `INSERT INTO item_activity (
-                    inventory_item_id, activity_type, activity_date, quantity, 
-                    unit_price, total_price, reference_type, reference_no, customer_name, notes, created_at
-                  ) VALUES (?, 'Job Usage', CURDATE(), ?, ?, ?, 'Job Card', ?, ?, ?, NOW())`,
-                  [
-                    mat.inventory_item_id,
-                    mat.quantity,
-                    unitPrice,
-                    mat.quantity * unitPrice,
-                    'Job Card',
-                    jobNo,
-                    customerName,
-                    `Used in Job Card ${jobNo}`
-                  ]
-                );
-              }
+              // Record in item_activity
+              await connection.execute(
+                `INSERT INTO item_activity (
+                  inventory_item_id, activity_type, activity_date, quantity, 
+                  unit_price, total_price, reference_type, reference_no, customer_name, notes, created_at
+                ) VALUES (?, 'Job Usage', CURDATE(), ?, ?, ?, 'Job Card', ?, ?, ?, NOW())`,
+                [
+                  mat.inventory_item_id,
+                  mat.quantity,
+                  unitPrice,
+                  mat.quantity * unitPrice,
+                  'Job Card',
+                  jobNo,
+                  customerName,
+                  `Used in Job Card ${jobNo}`
+                ]
+              );
             }
           }
         }
-
-        await connection.commit();
-      } catch (txnError) {
-        await connection.rollback();
-        throw txnError;
-      } finally {
-        connection.release();
       }
+
+      await connection.commit();
+    } catch (txnError) {
+      await connection.rollback();
+      throw txnError;
+    } finally {
+      connection.release();
     }
 
     // Fetch updated job card
